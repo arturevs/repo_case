@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Serviço do Banco de Dados PostgreSQL
   db:
@@ -11,8 +9,6 @@ services:
     volumes:
       # Monta um volume nomeado para persistir os dados do banco
       - postgres_data:/var/lib/postgresql/data
-      # Monta os scripts SQL para inicialização automática do banco
-      - ./sql:/docker-entrypoint-initdb.d
     ports:
       # Expõe a porta do banco para o host (máquina local) para depuração
       # Formato: <porta_host>:<porta_container>
@@ -39,7 +35,7 @@ services:
       db:
         condition: service_healthy
     # Comando a ser executado quando o container iniciar
-    command: python etl.py
+    command: python src/etl.py
 
 # Define os volumes nomeados
 volumes:
