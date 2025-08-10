@@ -8,8 +8,8 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 # Importa a Base declarativa e os modelos do novo arquivo
-from models import Base
-from views import VW_PERFORMANCE_SQL
+from .models import Base
+from .views import VW_PERFORMANCE_SQL
 
 # --- Configurações ---
 INPUT_DIR = Path("dados_brutos")

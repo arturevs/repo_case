@@ -15,4 +15,4 @@ RUN pip install --no-cache-dir .
 COPY . .
 
 # 6. Comando de execução
-CMD ["python", "src/etl.py"]
+CMD ["python", "-m", "src.etl"]

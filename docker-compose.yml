@@ -35,7 +35,7 @@ services:
       db:
         condition: service_healthy
     # Comando a ser executado quando o container iniciar
-    command: python src/etl.py
+    command: python -m src.etl
 
 # Define os volumes nomeados
 volumes:
