@@ -9,21 +9,13 @@ import requests
 from sqlalchemy import create_engine, text
 from tqdm import tqdm
 
-# Importa a Base declarativa e os modelos do novo arquivo
 from .models import Base
 from .views import VW_PERFORMANCE_SQL, VW_RANKING_ABSOLUTO_SQL
 
 # --- Configurações ---
 INPUT_DIR = Path("dados_brutos")
-# Métrica alvo corrigida para corresponder aos arquivos de 2019
-METRICA_ALVO = "Taxa de Respondidas em 5 dias Úteis"
 
-# URLs diretas para os arquivos ODS
-FILE_URLS = {
-    "SMP": "https://www.anatel.gov.br/dadosabertos/PDA/IDA/SMP2019.ods",
-    "STFC": "https://www.anatel.gov.br/dadosabertos/PDA/IDA/STFC2019.ods",
-    "SCM": "https://www.anatel.gov.br/dadosabertos/PDA/IDA/SCM2019.ods"
-}
+METRICA_ALVO = "Taxa de Respondidas em 5 dias Úteis"
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -38,7 +30,11 @@ class EtlPipeline:
 
     def __init__(self, input_dir: Path, db_url: str):
         """
-        Inicializa o pipeline de ETL.
+        Constrói uma instância do EtlPipeline.
+
+        Args:
+            input_dir (Path): O diretório onde os arquivos de dados brutos (.ods) serão salvos.
+            db_url (str): A URL de conexão para o banco de dados PostgreSQL.
         """
         self.input_dir = input_dir
         self.engine = create_engine(db_url)
@@ -47,7 +43,8 @@ class EtlPipeline:
 
     def _setup_database(self) -> None:
         """
-        Garante que a estrutura de tabelas e views exista no banco.
+        Garante que toda a estrutura de tabelas e views exista no banco de dados.
+        Cria as tabelas a partir dos modelos ORM e as views a partir de DDL explícito.
         """
         logging.info("Configurando o schema do banco de dados a partir dos modelos...")
         Base.metadata.create_all(self.engine)
@@ -63,8 +60,8 @@ class EtlPipeline:
 
     def _download_source_files(self) -> None:
         """
-        Baixa os arquivos ODS para um range de anos (2013-2019) para cada serviço.
-        O processo é resiliente e não para se um arquivo específico não for encontrado.
+        Baixa os arquivos ODS do portal da Anatel para um range de anos (2013-2019).
+        O processo é resiliente a arquivos não encontrados (erro 404).
         """
         logging.info("Iniciando o download do histórico de arquivos de dados (2013-2019)...")
         self.input_dir.mkdir(exist_ok=True)
@@ -105,7 +102,7 @@ class EtlPipeline:
 
     def _reformat_date_columns(self, columns: pd.Index) -> List[str]:
         """
-        Renomeia as colunas de data do formato 'Mês/Ano' para 'AAAA-MM'.
+        Padroniza as colunas de data do formato 'Mês/Ano' para 'AAAA-MM'.
         """
         month_map = {
             "jan": "01", "fev": "02", "mar": "03", "abr": "04", "mai": "05", "jun": "06",
@@ -137,8 +134,8 @@ class EtlPipeline:
 
     def extract_and_clean(self):
         """
-        Extrai dados dos arquivos .ods, limpa-os e os armazena no atributo
-        `self.cleaned_data`.
+        Extrai e limpa os dados de todos os arquivos .ods encontrados no diretório de entrada.
+        Os DataFrames limpos e combinados por serviço são armazenados em `self.cleaned_data`.
         """
         logging.info(f"Iniciando extração e limpeza do diretório: {self.input_dir}")
         ods_files = list(self.input_dir.glob("*.ods"))
@@ -170,8 +167,9 @@ class EtlPipeline:
 
     def transform(self):
         """
-        Transforma os dados extraídos, realizando unpivot, filtragem e
-        limpeza para preparar o DataFrame final para a carga.
+        Transforma os dados extraídos, realizando unpivot, filtragem pela métrica alvo
+        e limpeza final para preparar o DataFrame para a carga no Data Mart.
+        O resultado é armazenado em `self.final_df`.
         """
         if not self.cleaned_data:
             logging.warning("Dicionário de dados limpos está vazio. Encerrando a transformação.")
@@ -221,6 +219,7 @@ class EtlPipeline:
     def load(self):
         """
         Carrega o DataFrame transformado para o Data Mart no PostgreSQL.
+        A carga é idempotente, truncando as tabelas antes de inserir novos dados.
         """
         if self.final_df.empty:
             logging.warning("DataFrame vazio, nenhuma carga será realizada.")
@@ -275,7 +274,8 @@ class EtlPipeline:
 
     def run(self):
         """
-        Orquestra a execução completa do pipeline de ETL.
+        Executa o pipeline de ETL completo, orquestrando todas as etapas:
+        setup do banco, download, extração, transformação e carga.
         """
         logging.info("--- INICIANDO PIPELINE DE ETL PARA DADOS IDA ---")
         try:
@@ -293,7 +293,8 @@ class EtlPipeline:
 
 def main():
     """
-    Função principal que configura e executa o pipeline de ETL.
+    Ponto de entrada principal do script.
+    Configura e executa o pipeline de ETL.
     """
     try:
         db_user = os.getenv("POSTGRES_USER", "default_user")
