@@ -75,8 +75,8 @@ Siga os passos abaixo para executar o pipeline completo.
 ### 1. Clonar o Repositório
 
 ```bash
-git clone <url-do-seu-repositorio>
-cd <nome-do-repositorio>
+git clone https://github.com/arturevs/repo_case
+cd repo_case
 ```
 
 ### 2. Criar o Arquivo de Variáveis de Ambiente
