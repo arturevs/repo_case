@@ -2,10 +2,12 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Dict, List
 
 import pandas as pd
+import requests
 from sqlalchemy import create_engine, text
+from tqdm import tqdm
 
 # Importa a Base declarativa e os modelos do novo arquivo
 from .models import Base
@@ -13,7 +15,15 @@ from .views import VW_PERFORMANCE_SQL
 
 # --- Configurações ---
 INPUT_DIR = Path("dados_brutos")
-METRICA_ALVO = "Taxa de Resolvidas em 5 dias Úteis"
+# Métrica alvo corrigida para corresponder aos arquivos de 2019
+METRICA_ALVO = "Taxa de Respondidas em 5 dias Úteis"
+
+# URLs diretas para os arquivos ODS
+FILE_URLS = {
+    "SMP": "https://www.anatel.gov.br/dadosabertos/PDA/IDA/SMP2019.ods",
+    "STFC": "https://www.anatel.gov.br/dadosabertos/PDA/IDA/STFC2019.ods",
+    "SCM": "https://www.anatel.gov.br/dadosabertos/PDA/IDA/SCM2019.ods"
+}
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -29,11 +39,6 @@ class EtlPipeline:
     def __init__(self, input_dir: Path, db_url: str):
         """
         Inicializa o pipeline de ETL.
-
-        Args:
-            input_dir (Path): O diretório onde os arquivos de dados brutos (.ods)
-                              estão localizados.
-            db_url (str): A URL de conexão para o banco de dados PostgreSQL.
         """
         self.input_dir = input_dir
         self.engine = create_engine(db_url)
@@ -42,31 +47,64 @@ class EtlPipeline:
 
     def _setup_database(self) -> None:
         """
-        Método responsável pela criação de toda a estrutura de tabelas e views exista no banco.
-        Tabelas: dim_tempo, dim_grupo_economico, dim_servico, fato_atendimento
-        Views: vw_performance_relativa_mercado
-        Returns: Nothing
+        Garante que a estrutura de tabelas e views exista no banco.
         """
         logging.info("Configurando o schema do banco de dados a partir dos modelos...")
-        # 1. Cria as tabelas (dimensões e fato)
         Base.metadata.create_all(self.engine)
         logging.info("Tabelas criadas com sucesso.")
 
         logging.info("Criando/Atualizando a view 'vw_performance_relativa_mercado'...")
-        # 2. Usa um bloco de transação para executar o SQL da view importada
         with self.engine.connect() as connection:
             with connection.begin():
                 connection.execute(text(VW_PERFORMANCE_SQL))
         
         logging.info("View criada/atualizada com sucesso.")
 
+    def _download_source_files(self) -> None:
+        """
+        Baixa os arquivos ODS para um range de anos (2013-2019) para cada serviço.
+        O processo é resiliente e não para se um arquivo específico não for encontrado.
+        """
+        logging.info("Iniciando o download do histórico de arquivos de dados (2013-2019)...")
+        self.input_dir.mkdir(exist_ok=True)
+
+        anos = range(2013, 2020)  # Gera anos de 2013 a 2019
+        servicos = ["SMP", "STFC", "SCM"]
+        base_url = "https://www.anatel.gov.br/dadosabertos/PDA/IDA/"
+
+        for servico in servicos:
+            for ano in anos:
+                file_name = f"{servico}{ano}.ods"
+                url = f"{base_url}{file_name}"
+                output_path = self.input_dir / file_name
+
+                try:
+                    logging.info(f"Tentando baixar: {file_name}")
+                    with requests.get(url, stream=True, timeout=60) as r:
+                        # Lança um erro para status como 404 (Not Found)
+                        r.raise_for_status()
+                        
+                        total_size = int(r.headers.get('content-length', 0))
+                        with open(output_path, 'wb') as f, tqdm(
+                            total=total_size, unit='iB', unit_scale=True, desc=file_name
+                        ) as pbar:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                f.write(chunk)
+                                pbar.update(len(chunk))
+                    logging.info(f"Arquivo '{file_name}' salvo com sucesso.")
+                
+                except requests.exceptions.HTTPError as e:
+                    # Se o erro for 404, apenas avisa que o arquivo não existe e continua.
+                    if e.response.status_code == 404:
+                        logging.warning(f"Arquivo '{file_name}' não encontrado no servidor (404). Pulando.")
+                    else:
+                        logging.error(f"Falha ao baixar {file_name} com erro HTTP {e.response.status_code}.")
+                except requests.exceptions.RequestException as e:
+                    logging.error(f"Falha de conexão ao tentar baixar {file_name}: {e}")
+
     def _reformat_date_columns(self, columns: pd.Index) -> List[str]:
         """
         Renomeia as colunas de data do formato 'Mês/Ano' para 'AAAA-MM'.
-        Args:
-            columns (pd.Index): O índice de colunas do DataFrame.
-        Returns:
-            List[str]: Uma lista com os novos nomes de colunas formatados.
         """
         month_map = {
             "jan": "01", "fev": "02", "mar": "03", "abr": "04", "mai": "05", "jun": "06",
@@ -100,12 +138,11 @@ class EtlPipeline:
         """
         Extrai dados dos arquivos .ods, limpa-os e os armazena no atributo
         `self.cleaned_data`.
-        Returns: None
         """
         logging.info(f"Iniciando extração e limpeza do diretório: {self.input_dir}")
         ods_files = list(self.input_dir.glob("*.ods"))
         if not ods_files:
-            logging.error(f"Nenhum arquivo .ods encontrado em '{self.input_dir}'.")
+            logging.error(f"Nenhum arquivo .ods encontrado em '{self.input_dir}'. A etapa de download pode ter falhado.")
             return
 
         all_data = {}
@@ -134,10 +171,6 @@ class EtlPipeline:
         """
         Transforma os dados extraídos, realizando unpivot, filtragem e
         limpeza para preparar o DataFrame final para a carga.
-        Updates: self.final_df
-        Returns: None
-        Raises:
-            ValueError: Se a métrica alvo não for encontrada nos dados.
         """
         if not self.cleaned_data:
             logging.warning("Dicionário de dados limpos está vazio. Encerrando a transformação.")
@@ -187,9 +220,6 @@ class EtlPipeline:
     def load(self):
         """
         Carrega o DataFrame transformado para o Data Mart no PostgreSQL.
-        Realiza transformações necessárias para garantir a integridade referencial
-        e a idempotência da carga.
-        Returns: None
         """
         if self.final_df.empty:
             logging.warning("DataFrame vazio, nenhuma carga será realizada.")
@@ -248,7 +278,8 @@ class EtlPipeline:
         """
         logging.info("--- INICIANDO PIPELINE DE ETL PARA DADOS IDA ---")
         try:
-            self._setup_database() # Adicionada a chamada para criar o schema
+            self._setup_database()
+            self._download_source_files()
             self.extract_and_clean()
             self.transform()
             self.load()
