@@ -43,6 +43,25 @@ O objetivo final é permitir análises de performance, como a variação mensal 
 └── README.md
 ```
 
+## Visualizando a Documentação
+
+O projeto foi inteiramente documentado utilizando docstrings, seguindo as melhores práticas do Python. Você pode explorar a documentação de todas as classes e métodos iniciando um servidor web local com o `pydoc`.
+
+1.  **Inicie o Servidor:**
+    No seu terminal, a partir da **raiz do projeto**, execute o seguinte comando:
+    ```bash
+    python -m pydoc -b -p 8001
+    ```
+    - O seu terminal indicará que o servidor está a correr em `http://localhost:8001/`. O processo ficará ativo.
+
+2.  **Navegue pela Documentação:**
+    - Abra o seu navegador e aceda a **`http://localhost:8001/`**.
+    - Na página, clique no pacote **`src`** para ver os módulos do projeto.
+    - A partir daí, pode clicar em `etl`, `models` ou `views` para ver a documentação detalhada de cada um.
+
+3.  **Para Desligar o Servidor:**
+    - Volte ao seu terminal e pressione `Ctrl + C`.
+
 ## Pré-requisitos
 
 Para executar este projeto, você precisa ter instalado:
