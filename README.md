@@ -9,7 +9,9 @@ O objetivo final é permitir análises de performance, como a variação mensal 
 - **Download Automatizado:** O pipeline inicia com o download automático dos arquivos de dados `.ods` para os serviços SMP, STFC e SCM, abrangendo o histórico de 2013 a 2019.
 - **Pipeline de ETL Robusto:** Utiliza Python com Pandas para extrair, limpar, transformar e carregar os dados de forma eficiente e idempotente.
 - **Banco de Dados Dimensional:** O schema do banco (tabelas e view) é criado programaticamente usando SQLAlchemy ORM, garantindo uma fonte única da verdade no código Python.
-- **View Analítica:** Uma `VIEW` SQL (`vw_performance_relativa_mercado`) é criada automaticamente para fornecer uma análise pronta sobre a performance relativa de cada operadora.
+- **Views Analíticas:** Duas `VIEW`s SQL são criadas automaticamente para análises distintas:
+  - `vw_performance_relativa_mercado`: Compara a variação mensal de performance de cada operadora contra a média do mercado.
+  - `vw_ranking_desempenho_absoluto`: Cria um ranking mensal de operadoras com base no valor absoluto do indicador para cada serviço.
 - **Containerizado com Docker:** Todo o ambiente (banco de dados PostgreSQL e aplicação Python) é orquestrado com Docker Compose, permitindo a execução completa do projeto com um único comando.
 
 ## Tecnologias Utilizadas

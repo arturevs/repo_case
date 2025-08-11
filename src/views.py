@@ -57,3 +57,28 @@ GROUP BY
 ORDER BY
     "Mes"
 """
+
+VW_RANKING_ABSOLUTO_SQL = """
+CREATE OR REPLACE VIEW vw_ranking_desempenho_absoluto AS
+SELECT
+    TO_CHAR(t.data_referencia, 'YYYY-MM') AS "Mes",
+    s.nome_servico AS "Serviço",
+    g.nome_grupo AS "Grupo Econômico",
+    f.valor AS "Valor do Indicador",
+    RANK() OVER (
+        PARTITION BY t.data_referencia, s.nome_servico
+        ORDER BY f.valor DESC
+    ) AS "Ranking"
+FROM
+    fato_atendimento f
+JOIN
+    dim_tempo t ON f.tempo_id = t.id_tempo
+JOIN
+    dim_grupo_economico g ON f.grupo_economico_id = g.id_grupo
+JOIN
+    dim_servico s ON f.servico_id = s.id_servico
+ORDER BY
+    "Mes",
+    "Serviço",
+    "Ranking";
+"""

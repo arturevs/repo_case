@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 # Importa a Base declarativa e os modelos do novo arquivo
 from .models import Base
-from .views import VW_PERFORMANCE_SQL
+from .views import VW_PERFORMANCE_SQL, VW_RANKING_ABSOLUTO_SQL
 
 # --- Configurações ---
 INPUT_DIR = Path("dados_brutos")
@@ -57,8 +57,9 @@ class EtlPipeline:
         with self.engine.connect() as connection:
             with connection.begin():
                 connection.execute(text(VW_PERFORMANCE_SQL))
+                connection.execute(text(VW_RANKING_ABSOLUTO_SQL))
         
-        logging.info("View criada/atualizada com sucesso.")
+        logging.info("Views criadas/atualizadas com sucesso.")
 
     def _download_source_files(self) -> None:
         """
